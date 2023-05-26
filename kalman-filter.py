@@ -1,58 +1,113 @@
-import numpy as np
 
-class KalmanFilter(object):
-    def __init__(self, F = None, B = None, H = None, Q = None, R = None, P = None, x0 = None):
+import math
+import matplotlib.pyplot as plt
+import csv
+class KalmanFilter:
 
-        if(F is None or H is None):
-            raise ValueError("Set proper system dynamics.")
+    cov = float('nan')
+    x = float('nan')
 
-        self.n = F.shape[1]
-        self.m = H.shape[1]
+    def __init__(self, R, Q):
+        """
+        Constructor
 
-        self.F = F
-        self.H = H
-        self.B = 0 if B is None else B
-        self.Q = np.eye(self.n) if Q is None else Q
-        self.R = np.eye(self.n) if R is None else R
-        self.P = np.eye(self.n) if P is None else P
-        self.x = np.zeros((self.n, 1)) if x0 is None else x0
+        :param R: Process Noise
+        :param Q: Measurement Noise
+        """
+        self.A = 1
+        self.B = 0
+        self.C = 1
 
-    def predict(self, u = 0):
-        self.x = np.dot(self.F, self.x) + np.dot(self.B, u)
-        self.P = np.dot(np.dot(self.F, self.P), self.F.T) + self.Q
+        self.R = R
+        self.Q = Q
+
+    def filter(self, measurement):
+        """
+        Filters a measurement
+
+        :param measurement: The measurement value to be filtered
+        :return: The filtered value
+        """
+        u = 0
+        if math.isnan(self.x):
+            self.x = (1 / self.C) * measurement
+            self.cov = (1 / self.C) * self.Q * (1 / self.C)
+        else:
+            predX = (self.A * self.x) + (self.B * u)
+            predCov = ((self.A * self.cov) * self.A) + self.R
+
+            # Kalman Gain
+            K = predCov * self.C * (1 / ((self.C * predCov * self.C) + self.Q));
+
+            # Correction
+            self.x = predX + K * (measurement - (self.C * predX));
+            self.cov = predCov - (K * self.C * predCov);
+
         return self.x
 
-    def update(self, z):
-        y = z - np.dot(self.H, self.x)
-        S = self.R + np.dot(self.H, np.dot(self.P, self.H.T))
-        K = np.dot(np.dot(self.P, self.H.T), np.linalg.inv(S))
-        self.x = self.x + np.dot(K, y)
-        I = np.eye(self.n)
-        self.P = np.dot(np.dot(I - np.dot(K, self.H), self.P), 
-        	(I - np.dot(K, self.H)).T) + np.dot(np.dot(K, self.R), K.T)
+    def last_measurement(self):
+        """
+        Returns the last measurement fed into the filter
 
-def example():
-	dt = 1.0/60
-	F = np.array([[1, dt, 0], [0, 1, dt], [0, 0, 1]])
-	H = np.array([1, 0, 0]).reshape(1, 3)
-	Q = np.array([[0.05, 0.05, 0.0], [0.05, 0.05, 0.0], [0.0, 0.0, 0.0]])
-	R = np.array([0.5]).reshape(1, 1)
+        :return: The last measurement fed into the filter
+        """
+        return self.x
 
-	x = np.linspace(-10, 10, 100)
-	measurements = - (x**2 + 2*x - 2)  + np.random.normal(0, 2, 100)
+    def set_measurement_noise(self, noise):
+        """
+        Sets measurement noise
 
-	kf = KalmanFilter(F = F, H = H, Q = Q, R = R)
-	predictions = []
+        :param noise: The new measurement noise
+        """
+        self.Q = noise
 
-	for z in measurements:
-		predictions.append(np.dot(H,  kf.predict())[0])
-		kf.update(z)
+    def set_process_noise(self, noise):
+        """
+        Sets process noise
 
-	import matplotlib.pyplot as plt
-	plt.plot(range(len(measurements)), measurements, label = 'Measurements')
-	plt.plot(range(len(predictions)), np.array(predictions), label = 'Kalman Filter Prediction')
-	plt.legend()
-	plt.show()
+        :param noise: The new process noise
+        """
+        self.R = noise
 
-if __name__ == '__main__':
-    example()
+# Create an instance of KalmanFilter
+test = KalmanFilter(0.008, 0.1)
+
+# Test data
+testData =  [-58, -55, -56, -57, -66, -59, -58, -71, -56]
+
+# Lists to store the data for plotting
+x_values = []
+filtered_values = []
+# Lists to store the data for table generation and CSV export
+data_rows = []
+filtered_rows = []
+
+# Iterate through the testData and apply the filter
+for x in testData:
+    filtered_x = test.filter(x)
+
+    # Append the values to the respective lists
+    x_values.append(x)
+    filtered_values.append(filtered_x)
+    data_rows.append([x])
+    filtered_rows.append([filtered_x])
+    # Print the data and filtered data
+    print("Data:", x)
+    print("Filtered Data:", filtered_x)
+
+# Generate the CSV tables
+with open('data_table.csv', 'w', newline='') as data_file:
+    writer = csv.writer(data_file)
+    writer.writerows(data_rows)
+
+with open('filtered_data_table.csv', 'w', newline='') as filtered_data_file:
+    writer = csv.writer(filtered_data_file)
+    writer.writerows(filtered_rows)
+
+# Plot the data and filtered data
+plt.plot(x_values, label='Data')
+plt.plot(filtered_values, label='Filtered Data')
+plt.xlabel('Time')
+plt.ylabel('Value')
+plt.legend()
+plt.show()
